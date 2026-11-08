@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LYWSD02MMC – set clock</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.5 -apple-system, system-ui, sans-serif; max-width: 520px; margin: 40px auto; padding: 0 20px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { opacity: .65; margin-top: 0; }
+  .lang button { padding: 4px 10px; margin: 0 0 0 4px; font-size: 13px; }
+  .lang button.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+  button { font: inherit; padding: 10px 16px; border-radius: 10px; border: 1px solid #8884; cursor: pointer; margin: 4px 6px 4px 0; background: transparent; color: inherit; }
+  button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+  button:disabled { opacity: .5; cursor: default; }
+  label { display: block; margin: 16px 0 6px; }
+  input { font: inherit; padding: 8px; border-radius: 8px; border: 1px solid #8886; }
+  input[type=number] { width: 90px; }
+  input[type=radio] { width: auto; }
+  #now { font-size: 40px; font-variant-numeric: tabular-nums; margin: 16px 0; }
+  #log { white-space: pre-wrap; font: 13px/1.5 ui-monospace, Menlo, monospace; background: #8881; padding: 12px; border-radius: 10px; min-height: 60px; }
+  .warn { background: #f59e0b22; padding: 10px 12px; border-radius: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Xiaomi LYWSD02MMC</h1>
+  <div class="lang"><button data-lang="en">EN</button><button data-lang="pl">PL</button></div>
+</header>
+<p class="sub" data-i18n="subtitle"></p>
+
+<div id="unsupported" class="warn" hidden data-i18n="unsupported"></div>
+
+<div id="now">--:--:--</div>
+
+<label><input type="radio" name="mode" value="sync" checked> <span data-i18n="modeSync"></span>
+  <input id="shift" type="number" value="0" step="1"> <span data-i18n="min"></span>
+</label>
+<label><input type="radio" name="mode" value="manual"> <span data-i18n="modeManual"></span>
+  <input id="manual" type="datetime-local" step="60">
+</label>
+
+<p>
+  <button class="primary" id="go" data-i18n="btnSet"></button>
+  <button id="goAll" data-i18n="btnSetAll"></button>
+</p>
+
+<div id="log"></div>
+
+<script>
+const SVC = "ebe0ccb0-7a0a-4b0c-8a1a-6ff2997da3a6";
+const CH  = "ebe0ccb7-7a0a-4b0c-8a1a-6ff2997da3a6";
+
+const I18N = {
+  en: {
+    subtitle: "Sets the clock over Bluetooth (Web Bluetooth – Chrome / Edge).",
+    unsupported: "This browser does not support Web Bluetooth. Open this page in Chrome or Edge.",
+    modeSync: "Computer time, shifted by",
+    min: "min",
+    modeManual: "Any time:",
+    btnSet: "Set time",
+    btnSetAll: "Set (show all devices)",
+    connecting: "Connecting to: ",
+    before: "Before: ",
+    after:  "After:  ",
+    done: "Done ✔  The display refreshes within a minute.",
+    error: "Error: ",
+    pickDate: "Pick a date and time.",
+    hintAll: "Try “show all devices” and pick the one with the strongest signal.",
+    locale: "en-GB",
+  },
+  pl: {
+    subtitle: "Ustawia zegar przez Bluetooth (Web Bluetooth – Chrome / Edge).",
+    unsupported: "Ta przeglądarka nie obsługuje Web Bluetooth. Otwórz stronę w Chrome lub Edge.",
+    modeSync: "Czas z komputera, przesunięty o",
+    min: "min",
+    modeManual: "Dowolna godzina:",
+    btnSet: "Ustaw czas",
+    btnSetAll: "Ustaw (pokaż wszystkie urządzenia)",
+    connecting: "Łączę z: ",
+    before: "Przed: ",
+    after:  "Po:    ",
+    done: "Gotowe ✔  Ekran odświeży się w ciągu minuty.",
+    error: "Błąd: ",
+    pickDate: "Wybierz datę i godzinę.",
+    hintAll: "Spróbuj „pokaż wszystkie urządzenia” i wybierz to z najsilniejszym sygnałem.",
+    locale: "pl-PL",
+  },
+};
+
+const $ = id => document.getElementById(id);
+const log = m => { $("log").textContent += m + "\n"; };
+
+function getStoredLang() {
+  try { return localStorage.getItem("lang"); } catch { return null; }
+}
+let lang = getStoredLang() || ((navigator.language || "en").toLowerCase().startsWith("pl") ? "pl" : "en");
+const t = k => I18N[lang][k];
+
+function applyLang(l) {
+  lang = l;
+  try { localStorage.setItem("lang", l); } catch {}
+  document.documentElement.lang = l;
+  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll(".lang button").forEach(b => b.classList.toggle("active", b.dataset.lang === l));
+}
+document.querySelectorAll(".lang button").forEach(b => b.onclick = () => applyLang(b.dataset.lang));
+applyLang(lang);
+
+if (!navigator.bluetooth) { $("unsupported").hidden = false; $("go").disabled = $("goAll").disabled = true; }
+
+{ const d = new Date(); d.setSeconds(0, 0); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  $("manual").value = d.toISOString().slice(0, 16); }
+$("manual").addEventListener("input", () => document.querySelector('input[value=manual]').checked = true);
+$("shift").addEventListener("input", () => document.querySelector('input[value=sync]').checked = true);
+
+setInterval(() => { $("now").textContent = new Date().toLocaleTimeString(t("locale")); }, 250);
+
+const fmt = dv => {
+  const ts = dv.getUint32(0, true), tz = dv.getInt8(4);
+  const d = new Date((ts + tz * 3600) * 1000);
+  return d.toISOString().slice(0, 16).replace("T", " ") + ` (UTC${tz >= 0 ? "+" : ""}${tz})`;
+};
+
+async function run(all) {
+  $("log").textContent = "";
+  try {
+    let target;
+    if (document.querySelector('input[name=mode]:checked').value === "manual") {
+      if (!$("manual").value) throw new Error(t("pickDate"));
+      target = new Date($("manual").value);
+    } else {
+      target = new Date(Date.now() + parseInt($("shift").value || "0", 10) * 60000);
+    }
+
+    const opts = all
+      ? { acceptAllDevices: true, optionalServices: [SVC] }
+      : { filters: [{ namePrefix: "LYWSD02" }, { services: [SVC] }, { serviceData: [{ service: 0xfe95 }] }],
+          optionalServices: [SVC] };
+    const dev = await navigator.bluetooth.requestDevice(opts);
+    log(t("connecting") + (dev.name || dev.id));
+    const gatt = await dev.gatt.connect();
+    const ch = await (await gatt.getPrimaryService(SVC)).getCharacteristic(CH);
+    log(t("before") + fmt(await ch.readValue()));
+
+    // Payload: uint32 LE unix timestamp + int8 UTC offset in hours
+    const buf = new DataView(new ArrayBuffer(5));
+    buf.setUint32(0, Math.floor(target.getTime() / 1000), true);
+    buf.setInt8(4, Math.round(-target.getTimezoneOffset() / 60));
+    await ch.writeValueWithResponse(buf.buffer);
+
+    log(t("after") + fmt(await ch.readValue()));
+    gatt.disconnect();
+    log(t("done"));
+  } catch (e) {
+    log(t("error") + e.message);
+    if (!all && /filter|No device|cancel/i.test(e.message)) log(t("hintAll"));
+  }
+}
+$("go").onclick = () => run(false);
+$("goAll").onclick = () => run(true);
+</script>
+</body>
+</html>
